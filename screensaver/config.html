@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Matrix Screensaver Configuration</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 20px;
+            background: #1a1a1a;
+            color: #00ff00;
+        }
+        
+        .container {
+            max-width: 500px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            text-shadow: 0 0 10px #00ff00;
+        }
+        
+        .setting-group {
+            margin-bottom: 20px;
+            padding: 15px;
+            border: 1px solid #004400;
+            border-radius: 5px;
+            background: rgba(0, 68, 0, 0.1);
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        
+        input, select {
+            width: 100%;
+            padding: 8px;
+            background: #000;
+            color: #00ff00;
+            border: 1px solid #004400;
+            border-radius: 3px;
+        }
+        
+        input[type="range"] {
+            width: calc(100% - 60px);
+        }
+        
+        .range-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .range-value {
+            min-width: 50px;
+            font-family: monospace;
+        }
+        
+        .buttons {
+            text-align: center;
+            margin-top: 30px;
+        }
+        
+        button {
+            background: #004400;
+            color: #00ff00;
+            border: 1px solid #00ff00;
+            padding: 10px 20px;
+            margin: 0 10px;
+            cursor: pointer;
+            border-radius: 3px;
+        }
+        
+        button:hover {
+            background: #00ff00;
+            color: #000;
+        }
+        
+        .preview {
+            text-align: center;
+            margin: 20px 0;
+        }
+        
+        .preview button {
+            background: #440044;
+            border-color: #ff00ff;
+            color: #ff00ff;
+        }
+        
+        .preview button:hover {
+            background: #ff00ff;
+            color: #000;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Matrix Screensaver Settings</h1>
+        
+        <div class="setting-group">
+            <label for="version">Matrix Version:</label>
+            <select id="version">
+                <option value="classic">Classic Matrix</option>
+                <option value="operator">Operator</option>
+                <option value="resurrections">Resurrections</option>
+                <option value="nightmare">Nightmare Matrix</option>
+                <option value="paradise">Paradise Matrix</option>
+                <option value="3d">3D Mode</option>
+            </select>
+        </div>
+        
+        <div class="setting-group">
+            <label for="numColumns">Number of Columns:</label>
+            <div class="range-container">
+                <input type="range" id="numColumns" min="40" max="200" value="120">
+                <span class="range-value" id="numColumnsValue">120</span>
+            </div>
+        </div>
+        
+        <div class="setting-group">
+            <label for="fallSpeed">Fall Speed:</label>
+            <div class="range-container">
+                <input type="range" id="fallSpeed" min="0.1" max="2.0" step="0.1" value="0.4">
+                <span class="range-value" id="fallSpeedValue">0.4</span>
+            </div>
+        </div>
+        
+        <div class="setting-group">
+            <label for="animationSpeed">Animation Speed:</label>
+            <div class="range-container">
+                <input type="range" id="animationSpeed" min="0.1" max="3.0" step="0.1" value="0.8">
+                <span class="range-value" id="animationSpeedValue">0.8</span>
+            </div>
+        </div>
+        
+        <div class="setting-group">
+            <label for="bloomStrength">Glow Strength:</label>
+            <div class="range-container">
+                <input type="range" id="bloomStrength" min="0.0" max="1.0" step="0.1" value="0.7">
+                <span class="range-value" id="bloomStrengthValue">0.7</span>
+            </div>
+        </div>
+        
+        <div class="preview">
+            <button onclick="previewSettings()">Preview Settings</button>
+        </div>
+        
+        <div class="buttons">
+            <button onclick="saveSettings()">OK</button>
+            <button onclick="window.close()">Cancel</button>
+        </div>
+    </div>
+
+    <script>
+        const { ipcRenderer } = require('electron');
+        
+        // Update range value displays
+        function updateRangeDisplay(id) {
+            const input = document.getElementById(id);
+            const display = document.getElementById(id + 'Value');
+            display.textContent = input.value;
+        }
+        
+        // Set up range input listeners
+        ['numColumns', 'fallSpeed', 'animationSpeed', 'bloomStrength'].forEach(id => {
+            const input = document.getElementById(id);
+            input.addEventListener('input', () => updateRangeDisplay(id));
+        });
+        
+        // Load saved settings
+        function loadSettings() {
+            // Load from localStorage or Windows registry
+            const saved = localStorage.getItem('matrixScreensaverConfig');
+            if (saved) {
+                const config = JSON.parse(saved);
+                Object.keys(config).forEach(key => {
+                    const element = document.getElementById(key);
+                    if (element) {
+                        element.value = config[key];
+                        if (element.type === 'range') {
+                            updateRangeDisplay(key);
+                        }
+                    }
+                });
+            }
+        }
+        
+        function saveSettings() {
+            const config = {
+                version: document.getElementById('version').value,
+                numColumns: parseInt(document.getElementById('numColumns').value),
+                fallSpeed: parseFloat(document.getElementById('fallSpeed').value),
+                animationSpeed: parseFloat(document.getElementById('animationSpeed').value),
+                bloomStrength: parseFloat(document.getElementById('bloomStrength').value)
+            };
+            
+            localStorage.setItem('matrixScreensaverConfig', JSON.stringify(config));
+            ipcRenderer.invoke('save-config', config);
+            window.close();
+        }
+        
+        function previewSettings() {
+            const config = {
+                version: document.getElementById('version').value,
+                numColumns: parseInt(document.getElementById('numColumns').value),
+                fallSpeed: parseFloat(document.getElementById('fallSpeed').value),
+                animationSpeed: parseFloat(document.getElementById('animationSpeed').value),
+                bloomStrength: parseFloat(document.getElementById('bloomStrength').value)
+            };
+            
+            // Build preview URL
+            const params = new URLSearchParams();
+            params.set('version', config.version);
+            params.set('numColumns', config.numColumns);
+            params.set('fallSpeed', config.fallSpeed);
+            params.set('animationSpeed', config.animationSpeed);
+            params.set('bloomStrength', config.bloomStrength);
+            params.set('skipIntro', 'true');
+            
+            const previewUrl = `../index.html?${params.toString()}`;
+            
+            // Open preview window
+            const { shell } = require('electron');
+            shell.openExternal(`file://${require('path').resolve(__dirname, previewUrl)}`);
+        }
+        
+        // Initialize
+        loadSettings();
+    </script>
+</body>
+</html>
