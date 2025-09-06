@@ -1,7 +1,7 @@
 {
   "name": "matrix-screensaver",
   "version": "1.0.0",
-  "description": "Matrix Digital Rain Screensaver",
+  "description": "Matrix Digital Rain App",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -10,35 +10,46 @@
   },
   "build": {
     "appId": "com.matrix.screensaver",
-    "productName": "Matrix Screensaver",
+    "productName": "matrix",
     "directories": {
       "output": "dist"
     },
+    "includeSubNodeModules": true,
+    "buildDependenciesFromSource": false,
     "files": [
       "main.js",
-      "screensaver.html",
-      "config.html",
-      "../js/**/*",
-      "../lib/**/*",
-      "../shaders/**/*",
-      "../assets/**/*",
-      "../index.html"
+      {
+        "from": "../",
+        "to": "./",
+        "filter": ["index.html", "js/**/*", "lib/**/*", "shaders/**/*", "assets/**/*"]
+      }
     ],
     "win": {
-      "target": "nsis",
-      "icon": "icon.ico"
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "matrix.exe",
+      "extraResources": [
+        {
+          "from": "node_modules/electron/dist/icudtl.dat",
+          "to": "icudtl.dat"
+        }
+      ]
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": false,
-      "createStartMenuShortcut": false,
-      "installerIcon": "icon.ico",
-      "uninstallerIcon": "icon.ico"
+      "createStartMenuShortcut": false
     }
   },
   "devDependencies": {
-    "electron": "^27.0.0",
+    "electron": "^38.0.0",
     "electron-builder": "^24.6.4"
   }
 }
