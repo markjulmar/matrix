@@ -4,6 +4,8 @@ const path = require('path');
 let mainWindow;
 let isFullscreen = false;
 let currentEffect = 'classic';
+let fullscreenWindows = [];
+let useAllMonitors = true;
 
 // Available Matrix effects
 const availableEffects = [
@@ -129,16 +131,29 @@ function createWindowedWindow() {
   createMenu();
   
   loadMatrixWithEffect(currentEffect);
-  
+
+  // Handle fullscreen toggle key in windowed mode
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.type === 'keyDown') {
+      // Handle F11 or Ctrl+Command+F for fullscreen toggle
+      if (input.key === 'F11' ||
+          (input.key === 'f' && input.control && input.meta && process.platform === 'darwin')) {
+        toggleFullscreen();
+      }
+    }
+  });
+
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
 }
 
 function loadMatrixWithEffect(effect) {
-  // Try to find index.html in current directory first (production), then parent directory (development)
-  let indexPath = path.join(__dirname, 'index.html');
-  if (!require('fs').existsSync(indexPath)) {
+  // For packaged app, use app.getAppPath(), for development use parent directory
+  let indexPath;
+  if (app.isPackaged) {
+    indexPath = path.join(app.getAppPath(), 'index.html');
+  } else {
     indexPath = path.join(__dirname, '..', 'index.html');
   }
   const matrixUrl = `file://${indexPath}?version=${effect}&skipIntro=true&suppressWarnings=true`;
@@ -173,7 +188,21 @@ function createMenu() {
         { role: 'zoomIn' },
         { role: 'zoomOut' },
         { type: 'separator' },
-        { role: 'togglefullscreen' }
+        {
+          label: 'Use All Monitors in Fullscreen',
+          type: 'checkbox',
+          checked: useAllMonitors,
+          click: () => {
+            useAllMonitors = !useAllMonitors;
+          }
+        },
+        {
+          label: 'Toggle Fullscreen',
+          accelerator: process.platform === 'darwin' ? 'Ctrl+Command+F' : 'F11',
+          click: () => {
+            toggleFullscreen();
+          }
+        }
       ]
     },
     {
@@ -189,9 +218,125 @@ function createMenu() {
   Menu.setApplicationMenu(menu);
 }
 
+function exitFullscreenToWindowed() {
+  if (!isFullscreen) return;
+
+  // Close all fullscreen windows
+  fullscreenWindows.forEach(win => {
+    if (win && !win.isDestroyed()) {
+      win.close();
+    }
+  });
+  fullscreenWindows = [];
+
+  // Reset fullscreen state
+  isFullscreen = false;
+  mainWindow = null;
+
+  // Show dock again on macOS
+  if (process.platform === 'darwin') {
+    app.dock.show();
+  }
+
+  // Create a new windowed window
+  createWindowedWindow();
+}
+
+function createSingleMonitorFullscreen() {
+  let targetDisplay;
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    // Get the current display where the window is located
+    targetDisplay = screen.getDisplayMatching(mainWindow.getBounds());
+    // Close the current window
+    mainWindow.close();
+    mainWindow = null;
+  } else {
+    // If no window exists, use primary display
+    targetDisplay = screen.getPrimaryDisplay();
+  }
+
+  const { x, y, width, height } = targetDisplay.bounds;
+
+  const win = new BrowserWindow({
+    x: x,
+    y: y,
+    width: width,
+    height: height,
+    fullscreen: true,
+    frame: false,
+    show: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    kiosk: true,
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    closable: false,
+    focusable: true,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      enableRemoteModule: false,
+      webSecurity: false,
+      backgroundThrottling: false
+    }
+  });
+
+  fullscreenWindows.push(win);
+  mainWindow = win;
+
+  // Load the Matrix effect
+  let indexPath;
+  if (app.isPackaged) {
+    indexPath = path.join(app.getAppPath(), 'index.html');
+  } else {
+    indexPath = path.join(__dirname, '..', 'index.html');
+  }
+  const matrixUrl = `file://${indexPath}?version=${currentEffect}&numColumns=120&fallSpeed=0.4&animationSpeed=0.8&skipIntro=true&suppressWarnings=true`;
+  win.loadURL(matrixUrl);
+
+  // Handle key presses - ESC exits to windowed mode, other keys do nothing in single monitor mode
+  win.webContents.on('before-input-event', (event, input) => {
+    if (isFullscreen && input.type === 'keyDown') {
+      if (input.key === 'Escape') {
+        exitFullscreenToWindowed();
+      }
+    }
+  });
+
+  win.once('ready-to-show', () => {
+    win.show();
+    win.focus();
+  });
+}
+
+function toggleFullscreen() {
+  if (isFullscreen) {
+    // Exit fullscreen mode
+    exitFullscreenToWindowed();
+  } else {
+    // Enter fullscreen mode
+    isFullscreen = true;
+
+    // Hide dock on macOS
+    if (process.platform === 'darwin') {
+      app.dock.hide();
+    }
+
+    if (useAllMonitors) {
+      createFullscreenWindow();
+    } else {
+      createSingleMonitorFullscreen();
+    }
+  }
+}
+
 
 function createFullscreenWindow() {
   const displays = screen.getAllDisplays();
+  fullscreenWindows = [];
 
   displays.forEach((display, index) => {
     const { x, y, width, height } = display.bounds;
@@ -207,18 +352,29 @@ function createFullscreenWindow() {
       alwaysOnTop: true,
       skipTaskbar: true,
       kiosk: true,
+      resizable: false,
+      movable: false,
+      minimizable: false,
+      maximizable: false,
+      closable: false,
+      focusable: true,
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
         enableRemoteModule: false,
-        webSecurity: false // Needed for local file access
+        webSecurity: false, // Needed for local file access
+        backgroundThrottling: false // Prevent background throttling for smoother animation
       }
     });
 
+    fullscreenWindows.push(win);
+
     // Load the Matrix effect with screensaver-appropriate settings
-    // Try to find index.html in current directory first (production), then parent directory (development)
-    let indexPath = path.join(__dirname, 'index.html');
-    if (!require('fs').existsSync(indexPath)) {
+    // For packaged app, use app.getAppPath(), for development use parent directory
+    let indexPath;
+    if (app.isPackaged) {
+      indexPath = path.join(app.getAppPath(), 'index.html');
+    } else {
       indexPath = path.join(__dirname, '..', 'index.html');
     }
     const matrixUrl = `file://${indexPath}?version=${currentEffect}&numColumns=120&fallSpeed=0.4&animationSpeed=0.8&skipIntro=true&suppressWarnings=true`;
@@ -229,14 +385,14 @@ function createFullscreenWindow() {
       win.webContents.insertCSS('* { cursor: none !important; }');
     });
 
-    win.once('ready-to-show', () => {
-      win.show();
-    });
-
-    // Exit on any mouse movement or key press
+    // Handle key presses - ESC exits to windowed mode, other keys quit app
     win.webContents.on('before-input-event', (event, input) => {
-      if (isFullscreen) {
-        app.quit();
+      if (isFullscreen && input.type === 'keyDown') {
+        if (input.key === 'Escape') {
+          exitFullscreenToWindowed();
+        } else {
+          app.quit();
+        }
       }
     });
 
@@ -250,6 +406,26 @@ function createFullscreenWindow() {
     if (index === 0) {
       mainWindow = win;
     }
+  });
+
+  // Show all windows at once after they're all loaded
+  let loadedCount = 0;
+  fullscreenWindows.forEach((win) => {
+    win.once('ready-to-show', () => {
+      loadedCount++;
+      if (loadedCount === fullscreenWindows.length) {
+        // All windows are ready, show them all at once
+        fullscreenWindows.forEach(w => {
+          w.show();
+          w.focus();
+        });
+
+        // Focus the primary display window last to ensure proper focus
+        if (mainWindow) {
+          mainWindow.focus();
+        }
+      }
+    });
   });
 
   // Track mouse movement to exit screensaver
@@ -271,14 +447,19 @@ function createFullscreenWindow() {
 
 app.whenReady().then(() => {
   const { mode, effect, showHelp } = parseArgs();
-  
+
   if (showHelp) {
     showHelpText();
     return;
   }
-  
+
   currentEffect = effect;
-  
+
+  // On macOS, hide dock icon and menu bar for fullscreen screensaver
+  if (process.platform === 'darwin' && mode === 'fullscreen') {
+    app.dock.hide();
+  }
+
   switch (mode) {
     case 'fullscreen':
       isFullscreen = true;
